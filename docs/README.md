@@ -1,4 +1,4 @@
-# KRIXION Hate Speech Detection - Documentation
+# Hate Speech Detection - Documentation
 
 ## Installation
 
@@ -12,8 +12,8 @@
 
 ```bash
 cd D:\Projects
-git clone <repository-url> KRIXION_HateSpeechDetection
-cd KRIXION_HateSpeechDetection
+git clone <repository-url>HateSpeechDetection
+cd HateSpeechDetection
 ```
 
 ### Step 2: Create Virtual Environment
@@ -145,7 +145,7 @@ python -m src.training.train_transformer_embeddings --sample 100 --batch_size 4
 ## Project Structure
 
 ```
-KRIXION_HateSpeechDetection/
+HateSpeechDetection/
 ├── app.py                 # Main application entry
 ├── data/
 │   ├── raw/              # Raw CSV datasets
