@@ -1,0 +1,117 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Machine Learning Models (large files)
+models/**/*.pth
+models/**/*.joblib
+models/**/*.pkl
+models/**/*.safetensors
+models/**/*.bin
+models/**/*.h5
+
+# Keep directory structure but ignore model files
+!models/baseline/.gitkeep
+!models/deep/.gitkeep
+!models/transformer/.gitkeep
+
+# Transformer model files
+models/transformer/distilbert_local/
+models/transformer/indicbert_local/
+
+# Data files (can be large)
+data/**/*.csv
+data/**/*.json
+data/**/*.txt
+
+# Keep sample/example data
+!data/raw/sample.csv
+
+# Keep directory structure
+!data/.gitkeep
+!data/raw/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Reports and outputs
+reports/*.json
+reports/*.html
+reports/*.png
+reports/*.pdf
+
+# Keep reports directory
+!reports/.gitkeep
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Environments
+.env
+.env.local
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# PyTorch
+*.pt
+*.ckpt
+
+# TensorFlow
+*.pb
+checkpoint
+
+# Batch results
+data/batch_results.csv
+data/feedback.csv
+data/history_export.csv
