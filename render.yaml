@@ -2,8 +2,15 @@ services:
   - type: web
     name: hate-speech-detector
     env: python
-    buildCommand: pip install -r requirements.txt
+    region: oregon
+    plan: starter
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python app.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.0
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+    healthCheckPath: /

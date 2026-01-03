@@ -18,10 +18,12 @@ register_batch_page()
 
 
 if __name__ in {"__main__", "__mp_main__"}:
+    import os
     ui.run(
         title='HateSpeechDetection',
-        host='127.0.0.1',
-        port=8080,
+        host=os.getenv('HOST', '0.0.0.0'),
+        port=int(os.getenv('PORT', '10000')),
         reconnect_timeout=2.0,
-        show=True
+        show=False,
+        reload=False
     )
