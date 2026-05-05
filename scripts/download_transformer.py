@@ -9,7 +9,8 @@ from pathlib import Path
 from transformers import AutoTokenizer, AutoModel
 
 MODELS = {
-    "distilbert_local": "distilbert-base-multilingual-cased"
+    "distilbert_local": "distilbert-base-multilingual-cased",
+    "hinglish_bert": "l3cube-pune/hing-bert"
 }
 
 BASE_DIR = Path("models/transformer")

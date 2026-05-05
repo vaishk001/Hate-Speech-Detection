@@ -397,28 +397,46 @@ def register_analytics_page():
                     if baseline_report_path.exists():
                         with open(baseline_report_path, 'r') as f:
                             report_data = json.load(f)
-                        logreg_report = report_data.get('logreg', {}).get('report', {})
+
+                        # Support both flat structure {"accuracy": 0.9, "0":{...}, ...}
+                        # and nested structure {"logreg": {"report": {...}}}
+                        if 'logreg' in report_data:
+                            logreg_report = report_data['logreg'].get('report', {})
+                        else:
+                            logreg_report = report_data  # flat structure (actual format)
+
                         accuracy = logreg_report.get('accuracy', 0)
                         baseline_accuracy_label.text = f'Overall Accuracy: {accuracy:.2%}'
                         baseline_metrics_container.clear()
+
+                        # Render per-class metrics (keys "0", "1", "2")
+                        class_label_map = {"0": "Normal", "1": "Offensive", "2": "Hate"}
+                        rendered = False
                         for key, metrics in logreg_report.items():
                             if isinstance(metrics, dict) and 'precision' in metrics:
+                                display_name = class_label_map.get(key, key.replace('_', ' ').title())
                                 with baseline_metrics_container:
                                     with ui.card().classes('p-4 gradient-card-blue rounded-lg'):
                                         with ui.row().classes('items-center justify-between'):
-                                            ui.label(key).classes('font-semibold text-gray-800 dark:text-white')
+                                            ui.label(display_name).classes('font-semibold text-gray-800 dark:text-white')
                                             with ui.row().classes('gap-4'):
                                                 ui.label(f'P: {metrics.get("precision", 0):.3f}').classes('text-sm bg-blue-100 dark:bg-blue-900/50 px-2 py-1 rounded')
                                                 ui.label(f'R: {metrics.get("recall", 0):.3f}').classes('text-sm bg-green-100 dark:bg-green-900/50 px-2 py-1 rounded')
                                                 ui.label(f'F1: {metrics.get("f1-score", 0):.3f}').classes('text-sm bg-purple-100 dark:bg-purple-900/50 px-2 py-1 rounded')
+                                                ui.label(f'Support: {int(metrics.get("support", 0))}').classes('text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded')
+                                                rendered = True
+                        if not rendered:
+                            with baseline_metrics_container:
+                                ui.label('No per-class metrics found in report.').classes('text-sm text-gray-500')
                     else:
-                        baseline_accuracy_label.text = 'Overall Accuracy: No trained model'
+                        baseline_accuracy_label.text = 'No report found — train a model first'
                         baseline_metrics_container.clear()
                         with baseline_metrics_container:
-                            ui.label('Train a model in Batch page to see metrics').classes('text-sm text-gray-500')
+                            ui.label('Run: python -m src.training.train_baseline').classes('text-sm text-gray-500 font-mono')
                 except Exception as e:
-                    baseline_accuracy_label.text = f'Error loading report'
+                    baseline_accuracy_label.text = f'Error loading report: {e}'
                     baseline_metrics_container.clear()
+
 
             update_data()
             ui.timer(10.0, update_data)

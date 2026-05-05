@@ -441,7 +441,13 @@ def register_admin_page():
                             ui.label(status).classes(f"font-bold text-{color}-600 dark:text-{color}-400")
 
     # Hidden admin page (keeping the original functionality)
-    @ui.page("/krixion-admin-secure")
+    @ui.page("/admin-secure")
     def admin_hidden():
         # This page uses the same styling as the main admin page
+        admin()
+
+    # Alternative hidden admin path (no brand name in URL)
+    @ui.page("/secure-panel")
+    def admin_hidden_alt():
+        # Same admin panel available at an unlisted route
         admin()

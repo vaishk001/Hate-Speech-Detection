@@ -428,8 +428,37 @@ def classify():
                         return click_handler
                     ui.button(f"{lang_label} {text}", on_click=make_click()).props("flat align=left").classes("w-full justify-start text-left text-sm text-gray-700 dark:text-gray-300")
         
-        ui.label("Enter text to classify").classes("section-title text-gray-800 dark:text-white")
+        with ui.row().classes("w-full justify-between items-end mb-2"):
+            ui.label("Enter text or upload image").classes("section-title text-gray-800 dark:text-white mb-0")
+        
         input_text = ui.textarea(placeholder="Type or paste your text here...").classes("text-input w-full")
+        
+        # OCR Image Upload Section
+        async def handle_image_upload(e):
+            spinner_ref["spinner"].set_visibility(True)
+            ui.notify("Extracting text from image...", type="info")
+            try:
+                import asyncio
+                from src.utils.ocr import extract_text_from_image
+                image_bytes = e.content.read()
+                text = await asyncio.get_event_loop().run_in_executor(None, extract_text_from_image, image_bytes)
+                if text.strip():
+                    # Append to existing text or replace if empty
+                    current_val = input_text.value or ""
+                    new_val = current_val + "\n" + text if current_val else text
+                    input_text.set_value(new_val.strip())
+                    ui.notify("Text extracted successfully!", type="positive")
+                else:
+                    ui.notify("No text found in image.", type="warning")
+            except Exception as ex:
+                ui.notify(f"Error: {ex}", type="negative")
+            finally:
+                spinner_ref["spinner"].set_visibility(False)
+                
+        with ui.card().classes("w-full bg-blue-50 dark:bg-slate-800/50 border-dashed border-2 border-blue-200 dark:border-blue-900 mt-3 p-4 items-center"):
+            ui.label("🖼️ Extract text from a Meme or Screenshot").classes("text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2")
+            ui.upload(on_upload=handle_image_upload, auto_upload=True, multiple=False).props('accept="image/*" label="Drop image here or click"').classes('w-full max-w-sm')
+
         result_ref = {"data": None}
         spinner_ref = {"spinner": None}
 
@@ -452,7 +481,8 @@ def classify():
                 "cnn": "models/baseline/cnn.pth",
                 "bilstm": "models/baseline/bilstm.pth",  # cSpell:ignore bilstm
                 "hecan": "models/baseline/hecan.pth",  # cSpell:ignore hecan
-                "distilbert": "models/baseline/logreg_distilbert.joblib"  # cSpell:ignore distilbert
+                "distilbert": "models/baseline/logreg_distilbert.joblib",  # cSpell:ignore distilbert
+                "hinglish_bert": "models/transformer/hinglish_bert/classifier_head.pth"  # cSpell:ignore hinglish
             }
             
             if selected_model != "ensemble" and selected_model in model_paths:
@@ -494,6 +524,7 @@ def classify():
                             "bilstm",
                             "hecan",
                             "distilbert",
+                            "hinglish_bert",
                             "ensemble",
                         ],
                         value="logistic_regression"
@@ -506,7 +537,7 @@ def classify():
                     </div>
                     ''', sanitize=False)
                 
-                ui.label("(Options: logistic_regression, naive_bayes, svc, random_forest, cnn, bilstm, hecan, distilbert, ensemble)").classes("text-xs text-gray-600 dark:text-gray-400 mt-1")
+                ui.label("(Options: logistic_regression, naive_bayes, svc, random_forest, cnn, bilstm, hecan, distilbert, hinglish_bert, ensemble)").classes("text-xs text-gray-600 dark:text-gray-400 mt-1")
             
             ui.button("CLASSIFY", on_click=on_classify).props("color=primary size=lg").classes("px-8 self-end")
 
@@ -557,12 +588,143 @@ def classify():
                         ui.label("Flagged words:").classes("text-md font-semibold text-gray-700 dark:text-gray-300 mb-2")
                         ui.label("None detected").classes("text-sm text-gray-500 dark:text-gray-400")
                 density = 0.2 if label_int == 0 else (0.6 if label_int == 1 else 0.9)
-                with ui.column().classes("w-full mb-6"):
+                with ui.column().classes("w-full mb-4"):
                     with ui.row().classes("w-full items-center justify-between mb-2"):
                         ui.label("Paragraph hate density").classes("text-md font-semibold text-gray-700 dark:text-gray-300")
                         ui.label(f"{int(density*100)}%").classes("text-md font-bold text-gray-800 dark:text-white")
                     with ui.element("div").classes("density-bar"):
                         ui.element("div").style(f"width: {int(density*100)}%; height: 100%; border-radius: 8px; background: linear-gradient(90deg, #f59e0b 0%, {ACCENT_RED} 100%); transition: width 0.5s ease;")
+
+                # ── Sarcasm & Context Analysis Panel ──────────────────────
+                sarcasm_meta = data.get("sarcasm_meta", {})
+                if sarcasm_meta:
+                    sarcasm_info = sarcasm_meta.get("sarcasm", {})
+                    context_info = sarcasm_meta.get("context", {})
+                    override_notes = sarcasm_meta.get("override_notes", [])
+
+                    with ui.card().classes("w-full mt-4 p-4").style(
+                        "background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%); "
+                        "border: 1px solid #c7d7fe; border-radius: 0.75rem;"
+                    ):
+                        with ui.row().classes("items-center gap-2 mb-3"):
+                            ui.label("🔍").style("font-size:1.2rem")
+                            ui.label("Sarcasm & Context Analysis").classes("text-md font-bold text-blue-800 dark:text-blue-200")
+
+                        with ui.grid(columns=2).classes("gap-3 w-full mb-3"):
+                            # Sarcasm box
+                            sarcasm_detected = sarcasm_info.get("is_sarcastic", False)
+                            sarc_color = "#fef2f2" if sarcasm_detected else "#f0fdf4"
+                            sarc_border = "#fecaca" if sarcasm_detected else "#bbf7d0"
+                            sarc_label = ("⚠️ Sarcasm Detected" if sarcasm_detected else "✅ No Sarcasm")
+                            sarc_conf = sarcasm_info.get("confidence", 0)
+                            with ui.card().classes("p-3").style(
+                                f"background:{sarc_color};border:1px solid {sarc_border};border-radius:0.5rem"
+                            ):
+                                ui.label(sarc_label).classes("font-semibold text-sm mb-1")
+                                ui.label(f"Confidence: {sarc_conf*100:.0f}%").classes("text-xs text-gray-600")
+
+                            # Context risk box
+                            risk = context_info.get("risk_level", "low")
+                            risk_color = {"low": "#f0fdf4", "medium": "#fffbeb", "high": "#fef2f2"}.get(risk, "#f9fafb")
+                            risk_border = {"low": "#bbf7d0", "medium": "#fde68a", "high": "#fecaca"}.get(risk, "#e5e7eb")
+                            risk_icon = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(risk, "⚪")
+                            with ui.card().classes("p-3").style(
+                                f"background:{risk_color};border:1px solid {risk_border};border-radius:0.5rem"
+                            ):
+                                ui.label(f"{risk_icon} Context Risk: {risk.upper()}").classes("font-semibold text-sm mb-1")
+                                ctx_flags = context_info.get("context_signals", [])
+                                ctx_text = ", ".join(ctx_flags) if ctx_flags else "No specific signals"
+                                ui.label(ctx_text).classes("text-xs text-gray-600")
+
+                        # Sarcasm signals
+                        sarc_signals = sarcasm_info.get("signals", [])
+                        if sarc_signals:
+                            ui.label("Sarcasm triggers:").classes("text-xs font-semibold text-gray-600 mb-1")
+                            with ui.row().classes("flex-wrap gap-1 mb-2"):
+                                for sig in sarc_signals[:5]:
+                                    ui.label(sig).style(
+                                        "background:#dbeafe;color:#1e40af;font-size:0.7rem;"
+                                        "padding:0.15rem 0.5rem;border-radius:0.375rem;"
+                                    )
+
+                        # Context flags
+                        ctx_details = []
+                        if context_info.get("personal_attack"):
+                            ctx_details.append("👤 Personal attack")
+                        if context_info.get("group_targeting"):
+                            ctx_details.append("👥 Group targeting")
+                        if context_info.get("self_deprecation"):
+                            ctx_details.append("🙋 Self-deprecation")
+                        if context_info.get("humour_context"):
+                            ctx_details.append("😄 Humour/joking")
+                        if ctx_details:
+                            with ui.row().classes("flex-wrap gap-2 mb-2"):
+                                for flag in ctx_details:
+                                    ui.label(flag).style(
+                                        "background:#e0e7ff;color:#3730a3;font-size:0.75rem;"
+                                        "padding:0.2rem 0.6rem;border-radius:0.375rem;"
+                                    )
+
+                        # Override notes
+                        if override_notes:
+                            with ui.column().classes("mt-2"):
+                                ui.label("🔄 Adjustments applied:").classes("text-xs font-semibold text-orange-700 mb-1")
+                                for note in override_notes:
+                                    ui.label(f"• {note}").classes("text-xs text-orange-600")
+
+                # ── Auto-Moderation & Redaction Engine ──────────────────────
+                with ui.card().classes("w-full mt-4 p-4").style(
+                    "background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); "
+                    "border: 1px solid #cbd5e1; border-radius: 0.75rem;"
+                ):
+                    with ui.row().classes("items-center justify-between w-full mb-3"):
+                        with ui.row().classes("items-center gap-2"):
+                            ui.label("🛡️").style("font-size:1.2rem")
+                            ui.label("Auto-Moderation Engine").classes("text-md font-bold text-gray-800 dark:text-gray-200")
+                        ui.label("PRO FEATURE").classes("text-xs font-bold text-white px-2 py-1 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-md shadow-sm")
+
+                    with ui.grid(columns=2).classes("gap-4 w-full"):
+                        # 1. Action Recommendation
+                        action_title = "✅ Allow Content"
+                        action_desc = "Content is safe to publish."
+                        action_color = "#22c55e"
+                        action_bg = "#f0fdf4"
+                        action_border = "#bbf7d0"
+                        
+                        if label_int == 2:
+                            action_title = "🚫 Auto-Delete & Warn"
+                            action_desc = "Severe hate speech. Immediate removal recommended."
+                            action_color = "#ef4444"
+                            action_bg = "#fef2f2"
+                            action_border = "#fecaca"
+                        elif label_int == 1:
+                            action_title = "⚠️ Flag for Review"
+                            action_desc = "Offensive language detected. Withhold publication."
+                            action_color = "#f59e0b"
+                            action_bg = "#fffbeb"
+                            action_border = "#fde68a"
+
+                        with ui.card().classes("p-4").style(f"background:{action_bg}; border:1px solid {action_border}; border-radius:0.5rem;"):
+                            ui.label("Action Recommendation").classes("text-xs font-semibold text-gray-500 mb-1")
+                            ui.label(action_title).style(f"color:{action_color}; font-size:1.1rem; font-weight:bold; margin-bottom:0.25rem;")
+                            ui.label(action_desc).classes("text-xs text-gray-700")
+
+                        # 2. Toxicity Redaction
+                        import re
+                        redacted_text = data.get("text", "")
+                        for bad_word in suspect_hate + suspect_offensive:
+                            # Censor word by keeping first letter and replacing rest with asterisks
+                            pattern = re.compile(re.escape(bad_word), re.IGNORECASE)
+                            redacted_text = pattern.sub(lambda m: m.group()[0] + "*" * (len(m.group()) - 1), redacted_text)
+
+                        with ui.card().classes("p-4").style("background:#ffffff; border:1px solid #e2e8f0; border-radius:0.5rem;"):
+                            ui.label("Toxicity Redaction (Safe Filter)").classes("text-xs font-semibold text-gray-500 mb-1")
+                            ui.label(redacted_text).classes("text-sm font-medium text-gray-800 italic")
+                            if suspect_hate or suspect_offensive:
+                                ui.label("Potentially harmful words have been censored.").classes("text-[10px] text-gray-400 mt-2")
+                            else:
+                                ui.label("No redaction needed.").classes("text-[10px] text-gray-400 mt-2")
+
                 with ui.row().classes("w-full gap-3 mt-4"):
                     ui.button("👍 PREDICTION CORRECT", 
                              on_click=lambda: ui.notify('Feedback recorded!', type='positive')

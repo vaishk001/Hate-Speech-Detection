@@ -1,9 +1,15 @@
 # src/api/predict.py
-from matplotlib.pyplot import text
 from src.data.preprocess import preprocess_text
 from typing import Dict, Tuple, Optional
 from pathlib import Path
 import time
+
+# Sarcasm + context analyser
+try:
+    from src.utils.sarcasm_context import apply_sarcasm_context_override
+except Exception:
+    def apply_sarcasm_context_override(text, label, score):
+        return label, score, {}
 
 # optional imports with fallbacks
 try:
@@ -25,6 +31,7 @@ TRANSFORMER_DIR = Path("models/transformer/distilbert_local")
 TRANSFORMER_SKLEARN = Path("models/baseline/logreg_transformer.joblib")
 DISTILBERT_DIR = Path("models/transformer/distilbert_local")
 DISTILBERT_SKLEARN = Path("models/baseline/logreg_distilbert.joblib")
+HINGLISH_DIR = Path("models/transformer/hinglish_bert")
 
 # caches
 _baseline_model = None
@@ -34,6 +41,8 @@ _transformer_clf = None
 _distilbert_tokenizer = None
 _distilbert_model = None
 _distilbert_clf = None
+_hinglish_model = None
+_hinglish_tokenizer = None
 
 def _load_baseline():
     global _baseline_model
@@ -121,11 +130,14 @@ def _predict_with_baseline(text: str) -> Dict:
     probs = model.predict_proba([text])[0]
     label = int(probs.argmax())
     score = float(probs.max())
-    
-    # Apply rule-based override
+
+    # Apply rule-based word-category override
     label, score = _apply_rule_based_override(text, label, score)
-    
-    return {"label": label, "score": score, "model_name": "baseline-logreg"}
+
+    # Apply sarcasm + context override
+    label, score, sarcasm_meta = apply_sarcasm_context_override(text, label, score)
+
+    return {"label": label, "score": score, "model_name": "baseline-logreg", "sarcasm_meta": sarcasm_meta}
 
 def predict_text_with_model(text: str, model_name: str = "logistic_regression") -> Dict:
     """
@@ -145,7 +157,8 @@ def predict_text_with_model(text: str, model_name: str = "logistic_regression") 
         "cnn": "models/baseline/cnn.pth",
         "bilstm": "models/baseline/bilstm.pth",
         "hecan": "models/baseline/hecan.pth",
-        "distilbert": "models/baseline/logreg_distilbert.joblib"
+        "distilbert": "models/baseline/logreg_distilbert.joblib",
+        "hinglish_bert": "models/transformer/hinglish_bert/classifier_head.pth"
     }
     
     # Ensemble: average predictions from all available baseline models
@@ -166,8 +179,9 @@ def predict_text_with_model(text: str, model_name: str = "logistic_regression") 
                 label = int(avg_probs.argmax())
                 score = float(avg_probs.max())
                 label, score = _apply_rule_based_override(txt, label, score)
+                label, score, sarcasm_meta = apply_sarcasm_context_override(txt, label, score)
                 latency_ms = int((time.time() - t0) * 1000)
-                result = {"label": label, "score": score, "model_name": "ensemble", "latency_ms": latency_ms, "lang": lang}
+                result = {"label": label, "score": score, "model_name": "ensemble", "latency_ms": latency_ms, "lang": lang, "sarcasm_meta": sarcasm_meta}
                 try:
                     insert_prediction(txt, lang, label, score, "ensemble", latency_ms)
                 except Exception:
@@ -176,6 +190,34 @@ def predict_text_with_model(text: str, model_name: str = "logistic_regression") 
         except Exception as e:
             print(f"Ensemble error: {e}")
     
+    # HinglishBERT model (fine-tuned transformer)
+    if model_name == "hinglish_bert":
+        global _hinglish_model, _hinglish_tokenizer
+        if HINGLISH_DIR.exists() and (HINGLISH_DIR / "classifier_head.pth").exists():
+            try:
+                if _hinglish_model is None:
+                    from src.models.hinglish_bert import load_model as load_hinglish
+                    _hinglish_model, _hinglish_tokenizer = load_hinglish(HINGLISH_DIR, device='cpu')
+
+                from src.models.hinglish_bert import predict_text as predict_hinglish
+                preds = predict_hinglish([txt], model_dir=HINGLISH_DIR, device='cpu')
+                label, score = preds[0]
+                label, score = _apply_rule_based_override(txt, label, score)
+                label, score, sarcasm_meta = apply_sarcasm_context_override(txt, label, score)
+                latency_ms = int((time.time() - t0) * 1000)
+                result = {"label": label, "score": score, "model_name": "hinglish_bert", "latency_ms": latency_ms, "lang": lang, "sarcasm_meta": sarcasm_meta}
+                try:
+                    insert_prediction(txt, lang, label, score, "hinglish_bert", latency_ms)
+                except Exception:
+                    pass
+                return result
+            except Exception as e:
+                print(f"HinglishBERT error: {e}")
+                model_name = "logistic_regression"
+        else:
+            print("HinglishBERT model not found, falling back to logistic regression")
+            model_name = "logistic_regression"
+
     # DistilBERT model
     if model_name == "distilbert":
         global _distilbert_tokenizer, _distilbert_model, _distilbert_clf
@@ -196,8 +238,9 @@ def predict_text_with_model(text: str, model_name: str = "logistic_regression") 
                 label = int(proba.argmax())
                 score = float(proba.max())
                 label, score = _apply_rule_based_override(txt, label, score)
+                label, score, sarcasm_meta = apply_sarcasm_context_override(txt, label, score)
                 latency_ms = int((time.time() - t0) * 1000)
-                result = {"label": label, "score": score, "model_name": "distilbert", "latency_ms": latency_ms, "lang": lang}
+                result = {"label": label, "score": score, "model_name": "distilbert", "latency_ms": latency_ms, "lang": lang, "sarcasm_meta": sarcasm_meta}
                 try:
                     insert_prediction(txt, lang, label, score, "distilbert", latency_ms)
                 except Exception:
@@ -232,8 +275,9 @@ def predict_text_with_model(text: str, model_name: str = "logistic_regression") 
                     label, score = predictions[0]
                 
                 label, score = _apply_rule_based_override(txt, label, score)
+                label, score, sarcasm_meta = apply_sarcasm_context_override(txt, label, score)
                 latency_ms = int((time.time() - t0) * 1000)
-                result = {"label": label, "score": score, "model_name": model_name, "latency_ms": latency_ms, "lang": lang}
+                result = {"label": label, "score": score, "model_name": model_name, "latency_ms": latency_ms, "lang": lang, "sarcasm_meta": sarcasm_meta}
                 try:
                     insert_prediction(txt, lang, label, score, model_name, latency_ms)
                 except Exception:
@@ -255,9 +299,10 @@ def predict_text_with_model(text: str, model_name: str = "logistic_regression") 
         label = int(probs.argmax())
         score = float(probs.max())
         label, score = _apply_rule_based_override(txt, label, score)
-        
+        label, score, sarcasm_meta = apply_sarcasm_context_override(txt, label, score)
+
         latency_ms = int((time.time() - t0) * 1000)
-        result = {"label": label, "score": score, "model_name": model_name, "latency_ms": latency_ms, "lang": lang}
+        result = {"label": label, "score": score, "model_name": model_name, "latency_ms": latency_ms, "lang": lang, "sarcasm_meta": sarcasm_meta}
         try:
             insert_prediction(txt, lang, label, score, model_name, latency_ms)
         except Exception:
@@ -265,7 +310,7 @@ def predict_text_with_model(text: str, model_name: str = "logistic_regression") 
         return result
     except Exception as e:
         print(f"Model error: {e}")
-        return {"label": 0, "score": 0.5, "model_name": "error", "latency_ms": 0, "lang": lang}
+        return {"label": 0, "score": 0.5, "model_name": "error", "latency_ms": 0, "lang": lang, "sarcasm_meta": {}}
 
 def predict_text(text: str) -> Dict:
     """
@@ -278,6 +323,25 @@ def predict_text(text: str) -> Dict:
     txt = str(text).strip()
     cleaned_text, lang = preprocess_text(txt)
     txt = cleaned_text.strip()
+
+    # Check if HinglishBERT is available — prefer it for Hindi/Hinglish input
+    _is_hinglish = lang in ('hi', 'hi-en')
+    if _is_hinglish and HINGLISH_DIR.exists() and (HINGLISH_DIR / "classifier_head.pth").exists():
+        try:
+            from src.models.hinglish_bert import predict_text as predict_hinglish
+            preds = predict_hinglish([txt], model_dir=HINGLISH_DIR, device='cpu')
+            label, score = preds[0]
+            label, score = _apply_rule_based_override(txt, label, score)
+            label, score, sarcasm_meta = apply_sarcasm_context_override(txt, label, score)
+            latency_ms = int((time.time() - t0) * 1000)
+            out = {"label": label, "score": score, "model_name": "hinglish_bert", "latency_ms": latency_ms, "lang": lang, "sarcasm_meta": sarcasm_meta}
+            try:
+                insert_prediction(txt, lang, label, score, "hinglish_bert", latency_ms)
+            except Exception:
+                pass
+            return out
+        except Exception:
+            pass  # fall through to transformer/baseline
 
     # Attempt to use transformer classifier when present:
     tokenizer, transformer_model, sklearn_clf = _try_load_transformer_components()

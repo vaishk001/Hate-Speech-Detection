@@ -60,7 +60,7 @@ OFFENSIVE_WORDS = {
     
     # Dismissive terms
     "whatever", "shut up", "shutup", "get lost", "go away",
-    "leave me alone", "buzz off",
+    "leave me alone", "buzz off", "bad", "bekar", "bakwas",
 }
 
 def get_hate_words():

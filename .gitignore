@@ -40,14 +40,12 @@ models/**/*.h5
 # Transformer model files
 models/transformer/distilbert_local/
 models/transformer/indicbert_local/
+models/transformer/hinglish_bert/
 
 # Data files (can be large)
 data/**/*.csv
 data/**/*.json
 data/**/*.txt
-
-# Keep sample/example data
-!data/raw/sample.csv
 
 # Keep directory structure
 !data/.gitkeep
